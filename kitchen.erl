@@ -16,7 +16,7 @@ take(Pid,Food) ->
     Pid ! {self(), {take, Food}},
     receive
         {Pid,Msg} -> Msg
-    after 3000 ->
+    after 3000 -> % timeout after 3 secs
         timeout
     end.
 
