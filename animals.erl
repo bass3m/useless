@@ -36,3 +36,12 @@ restarter() ->
         {'EXIT', Pid, _} ->
             restarter()
     end.
+
+%% Some usage:
+%% c(animals).
+%% animals:start().
+%% animals:pet_analyze("Miaw").
+%% animals:pet_analyze("Dog").
+%% animals:pet_analyze("Ruff").
+%% exit(whereis(pet_soundboard),kill).
+%% whereis(pet_soundboard).
