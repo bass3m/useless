@@ -1,13 +1,10 @@
 -module(useless_irc).
 -behavior(gen_server).
-%-export([start/0, connect/2, calculate/1]).
 -export([start/2, login/1, join/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 -compile(export_all). % replace with export later
 
-%% tcp socket and read and process messages
-%% it's an irc client but also a calculation server
 -define(SERVER, ?MODULE).
 -define(REALNAME, "Julia MandelBot").
 -define(CRLF, "\r\n").
@@ -35,7 +32,6 @@ init([Server, Port]) ->
     io:format("connected to:~p~n",[Socket]),
     {ok, #state{server = Server, port = Port, sock = Socket}}.
 
-% an array of maps containing nick, and session id ?
 handle_call({login, Nick, Realname}, _From, State) ->
     %% write to socket with NICK and USER
     ok = gen_tcp:send(State#state.sock, "NICK " ++ Nick ++ ?CRLF),
@@ -59,9 +55,12 @@ handle_info({tcp_closed, Reason}, State) ->
     {noreply, State};
 
 handle_info({tcp, _Socket, Msg}, State) ->
-    %case string:tokens(binary_to_list(Msg)," ") ->
-        %[_,
-    io:format("Unexpected message rcvd: ~p~n",[Msg]),
+    case useless_irc_parser:parse_msg(Msg) of
+        {response, Response} ->
+            io:format("Respond server with ~p~n",[Response]),
+            gen_tcp:send(State#state.sock, Response ++ ?CRLF);
+        _ -> io:format("Unexpected message rcvd: ~p~n",[Msg])
+    end,
     {noreply, State};
 
 handle_info(Msg, State) ->
