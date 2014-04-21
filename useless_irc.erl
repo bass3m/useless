@@ -53,12 +53,17 @@ terminate(_Reason, _State) -> ok.
 handle_info({tcp_closed, Reason}, State) ->
     io:format("Tcp closed with reason: ~p~n",[Reason]),
     {noreply, State};
-
+% #s{reference = Reference} = State
 handle_info({tcp, _Socket, Msg}, State) ->
     case useless_irc_parser:parse_msg(Msg) of
         {response, Response} ->
             io:format("Respond server with ~p~n",[Response]),
             gen_tcp:send(State#state.sock, Response ++ ?CRLF);
+        {msg, [Nick | Privmsg]} when Nick =:= State#state.nick ->
+            io:format("Got a private msg ~p~n",[Privmsg]),
+            useless_irc_parser:process_private_msg(Privmsg);
+        {msg, [Chan | Chanmsg]} when Chan =:= State#state.channel ->
+            useless_irc_parser:process_channel_msg(Chanmsg);
         _ -> io:format("Unexpected message rcvd: ~p~n",[Msg])
     end,
     {noreply, State};
