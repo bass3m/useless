@@ -61,9 +61,9 @@ handle_info({tcp, _Socket, Msg}, State) ->
             gen_tcp:send(State#state.sock, Response ++ ?CRLF);
         {msg, [Nick | Privmsg]} when Nick =:= State#state.nick ->
             io:format("Got a private msg ~p~n",[Privmsg]),
-            useless_irc_parser:process_private_msg(Privmsg);
+            useless_irc_parser:process_private_msg(Privmsg,State);
         {msg, [Chan | Chanmsg]} when Chan =:= State#state.channel ->
-            useless_irc_parser:process_channel_msg(Chanmsg);
+            useless_irc_parser:process_channel_msg(Chanmsg,State);
         _ -> io:format("Unexpected message rcvd: ~p~n",[Msg])
     end,
     {noreply, State};
