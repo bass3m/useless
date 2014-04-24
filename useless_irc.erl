@@ -1,14 +1,15 @@
 -module(useless_irc).
 -behavior(gen_server).
--export([start/2, login/1, join/1]).
+-export([start/2, login/1, join/1, stop/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 -compile(export_all). % replace with export later
 
 -define(SERVER, ?MODULE).
--define(REALNAME, "Julia MandelBot").
+-define(REALNAME, "Julia MandelBot"). % XXX shoud change this really
 -define(CRLF, "\r\n").
 
+%% should be map that contains an an array of plugin maps
 -record(state, {server, port, nick, pass, username, realname, channel, sock}).
 
 %% Client APIs
@@ -44,7 +45,10 @@ handle_call({login, Nick, Realname}, _From, State) ->
 handle_call({join_channel, Channel}, _From, State) ->
     Reply = gen_tcp:send(State#state.sock,
                          "JOIN " ++ Channel ++ ?CRLF),
-    {reply, Reply, State#state{channel = Channel}}.
+    {reply, Reply, State#state{channel = Channel}};
+
+handle_call(stop, _From, State) ->
+            {stop, normal, stopped, State}.
 
 handle_cast(_Msg, State) -> {noreply, State}.
 
@@ -53,7 +57,7 @@ terminate(_Reason, _State) -> ok.
 handle_info({tcp_closed, Reason}, State) ->
     io:format("Tcp closed with reason: ~p~n",[Reason]),
     {noreply, State};
-% #s{reference = Reference} = State
+
 handle_info({tcp, _Socket, Msg}, State) ->
     case useless_irc_parser:parse_msg(Msg) of
         {response, Response} ->
@@ -61,9 +65,16 @@ handle_info({tcp, _Socket, Msg}, State) ->
             gen_tcp:send(State#state.sock, Response ++ ?CRLF);
         {msg, [Nick | Privmsg]} when Nick =:= State#state.nick ->
             io:format("Got a private msg ~p~n",[Privmsg]),
-            useless_irc_parser:process_private_msg(Privmsg,State);
+            %% not pass state and create a new process to handle the request
+            %% look at return value and if it's good then create a process
+            %% and send it info, keep only 3 outstanding requests
+            %% and add those to a list ? map of nicks and spawned pid
+            %% these return parsed strings
+            %% for each registered function call it's handler
+            useless_irc_parser:process_private_msg(Privmsg);
         {msg, [Chan | Chanmsg]} when Chan =:= State#state.channel ->
-            useless_irc_parser:process_channel_msg(Chanmsg,State);
+            %% not pass state and create a new process to handle the request
+            useless_irc_parser:process_channel_msg(Chanmsg);
         _ -> io:format("Unexpected message rcvd: ~p~n",[Msg])
     end,
     {noreply, State};
