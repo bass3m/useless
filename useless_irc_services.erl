@@ -55,6 +55,18 @@ handle_cast({register, {Service, Prefix, Node}}, State) when is_atom(Service) ->
             {noreply, NewState}
     end;
 
+handle_cast({remove, Service}, State) when is_atom(Service) ->
+    %% returns false only if if it's a new {service,prefix} or {service,prefix}
+    %% already exists (for the later case add another node to our list)
+    case lists:keymember(Service,1,State) of
+         true ->
+            io:format("~p exists removing it~n",[Service]),
+            {noreply, lists:keydelete(Service,1,State)}; % service or prefix should be a unique pair
+         false ->
+            io:format("~p doesn't exists~n",[Service]),
+            {noreply, State}
+    end;
+
 handle_cast(_Msg, State) -> {noreply, State}.
 
 % get a service matching the requested prefix
@@ -63,8 +75,10 @@ handle_call({get, Prefix}, _From, State) ->
                 false -> not_found;
                 {Service, Prefix, Nodes} -> {Service, Prefix, Nodes}
             end,
-    {reply, Reply, State}.
+    {reply, Reply, State};
 
+handle_call(stop, _From, State) ->
+            {stop, normal, stopped, State}.
 
 terminate(_Reason, _State) -> ok.
 
