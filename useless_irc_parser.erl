@@ -53,29 +53,27 @@ process_cmd(Command) ->
     io:format("Got Command ~p~n",[Command]),
     ok.
 
-process_channel_msg(Msg,State) ->
+process_channel_msg(Msg) ->
     case re:run(hd(Msg),?BOTPREFIX) of
-        {match,_} -> process_bot_msg(string:join(Msg," "),State);
+        {match,_} -> process_bot_msg(string:join(Msg," "));
         _ -> io:format("Channel Msg ignoring ~p~n",[Msg])
     end.
 
-process_bot_msg(Str,State) ->
-    io:format("Got a Bot Channel Str ~p State ~p~n",[Str,State]),
+process_bot_msg(Str) ->
+    io:format("Got a Bot Channel Str ~p~n",[Str]),
     %% remove bot prefix
-    ParsedStr= string:strip(re:replace(Str,?BOTPREFIX,"",[{return, list}])),
-    io:format("Cleaned Str ~p~n",[ParsedStr]),
-    ok.
+    string:strip(re:replace(Str,?BOTPREFIX,"",[{return, list}])).
 
 is_ctcp([Msg]) ->
     [hd(Msg)] =:= ":" andalso hd(tl(Msg)) =:= 1 andalso lists:last(Msg) =:= 1.
 
-process_private_msg(Msg,State) ->
+process_private_msg(Msg) ->
     Str = string:join(Msg," "),
     case is_ctcp(Msg) of
         %% ignore ctcp messages
        true -> io:format("CTCP Msg ignored ~p~n",[Str]);
        false -> case re:run(hd(Msg),?BOTPREFIX) of
-                   {match,_} -> process_bot_msg(Str,State);
+                   {match,_} -> process_bot_msg(Str);
                    _ -> io:format("Private Msg ignoring ~p~n",[Msg])
                end
     end.
