@@ -7,8 +7,8 @@
 
 -define(SERVER, ?MODULE).
 
-register_service(Service, Prefix, Node) ->
-    gen_server:cast(?MODULE, {register, {Service, Prefix, Node}}).
+register_service(Service, Prefix, Pid, Node) ->
+    gen_server:cast(?MODULE, {register, {Service, Prefix, Pid, Node}}).
 
 remove_service(Service) ->
     gen_server:cast(?MODULE, {remove, Service}).
@@ -34,7 +34,7 @@ init([]) ->
 
 %% can have multiple nodes per service
 %% [{service1,prefix1,[nodex,nodey]},{service2,prefix2,[nodea,nodeb]}]
-handle_cast({register, {Service, Prefix, Node}}, State) when is_atom(Service) ->
+handle_cast({register, {Service, Prefix, Pid, Node}}, State) when is_atom(Service) ->
     %% returns false only if if it's a new {service,prefix} or {service,prefix}
     %% already exists (for the later case add another node to our list)
     case lists:keymember(Service,1,State) xor
@@ -43,25 +43,25 @@ handle_cast({register, {Service, Prefix, Node}}, State) when is_atom(Service) ->
             io:format("~p,~p already exists~n",[Service,Prefix]),
             {noreply, State}; % service or prefix should be a unique pair
          false ->
-            NewState = case lists:keyfind(Service,1,State) of
-                           false ->
-                               [{Service, Prefix, Node} | State];
-                           {Service, Prefix, Nodes} ->
-                               lists:keyreplace(Service, 1, State,
-                                                {Service, Prefix,
-                                                 lists:flatten([Node | lists:delete(Node, [Nodes])])})
-                       end,
+            NewState =
+                case lists:keyfind(Service,1,State) of
+                    false ->
+                        [{Service, Prefix, Pid, Node} | State];
+                    {Service, Prefix, Nodes} ->
+                        lists:keyreplace(Service, 1, State,
+                                         {Service, Prefix,
+                                          lists:flatten([{Pid, Node} |
+                                                         lists:delete({Pid, Node}, [Nodes])])})
+                end,
             io:format("Adding new Service to State ~p~n",[NewState]),
             {noreply, NewState}
     end;
 
 handle_cast({remove, Service}, State) when is_atom(Service) ->
-    %% returns false only if if it's a new {service,prefix} or {service,prefix}
-    %% already exists (for the later case add another node to our list)
     case lists:keymember(Service,1,State) of
          true ->
             io:format("~p exists removing it~n",[Service]),
-            {noreply, lists:keydelete(Service,1,State)}; % service or prefix should be a unique pair
+            {noreply, lists:keydelete(Service,1,State)};
          false ->
             io:format("~p doesn't exists~n",[Service]),
             {noreply, State}
