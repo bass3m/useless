@@ -64,17 +64,21 @@ process_bot_msg(Str) ->
     %% remove bot prefix
     string:strip(re:replace(Str,?BOTPREFIX,"",[{return, list}])).
 
-is_ctcp([Msg]) ->
-    [hd(Msg)] =:= ":" andalso hd(tl(Msg)) =:= 1 andalso lists:last(Msg) =:= 1.
+is_ctcp([Msg]) when is_list(Msg) ->
+    io:format("check ctcp Msg ~p~n",[Msg]),
+    [hd(Msg)] =:= ":" andalso hd(tl(Msg)) =:= 1 andalso lists:last(Msg) =:= 1;
+
+is_ctcp(_) ->
+    false.
 
 process_private_msg(Msg) ->
     Str = string:join(Msg," "),
     case is_ctcp(Msg) of
-        %% ignore ctcp messages
+       %% ignore ctcp messages
        true -> io:format("CTCP Msg ignored ~p~n",[Str]);
        false -> case re:run(hd(Msg),?BOTPREFIX) of
-                   {match,_} -> process_bot_msg(Str);
-                   _ -> io:format("Private Msg ignoring ~p~n",[Msg])
-               end
+                    {match,_} -> process_bot_msg(Str);
+                    _ -> io:format("Private Msg ignoring ~p~n",[Msg])
+                end
     end.
 
