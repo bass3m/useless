@@ -67,14 +67,19 @@ handle_info({tcp, _Socket, Msg}, State) ->
             io:format("Got a private msg ~p~n",[Privmsg]),
             %% not pass state and create a new process to handle the request
             %% look at return value and if it's good then create a process
-            %% and send it info, keep only 3 outstanding requests
-            %% and add those to a list ? map of nicks and spawned pid
-            %% these return parsed strings
             %% for each registered function call it's handler
-            useless_irc_parser:process_private_msg(Privmsg);
+            %NickRequest = useless_irc_parser:process_private_msg(Privmsg),
+            [Service|Request] = useless_irc_parser:process_private_msg(Privmsg),
+            io:format("Nick request msg ~p request ~p~n",[Service,Request]),
+            %% find something that matches the prefix
+            ServiceAt = useless_irc_services:get_service(Service),
+            io:format("Service at ~p~n",[ServiceAt]);
         {msg, [Chan | Chanmsg]} when Chan =:= State#state.channel ->
             %% not pass state and create a new process to handle the request
-            useless_irc_parser:process_channel_msg(Chanmsg);
+            [Service|Request] = useless_irc_parser:process_channel_msg(Chanmsg),
+            io:format("Channel request msg ~p request ~p~n",[Service,Request]),
+            ServiceAt = useless_irc_services:get_service(Service),
+            io:format("Service at ~p~n",[ServiceAt]);
         _ -> io:format("Unexpected message rcvd: ~p~n",[Msg])
     end,
     {noreply, State};

@@ -7,6 +7,9 @@
 
 -define(SERVER, ?MODULE).
 
+register_service(Service, Prefix) ->
+    register_service(Service, Prefix, self(), node()).
+
 register_service(Service, Prefix, Pid, Node) ->
     gen_server:cast(?MODULE, {register, {Service, Prefix, Pid, Node}}).
 
@@ -46,7 +49,7 @@ handle_cast({register, {Service, Prefix, Pid, Node}}, State) when is_atom(Servic
             NewState =
                 case lists:keyfind(Service,1,State) of
                     false ->
-                        [{Service, Prefix, Pid, Node} | State];
+                        [{Service, Prefix, {Pid, Node}} | State];
                     {Service, Prefix, Nodes} ->
                         lists:keyreplace(Service, 1, State,
                                          {Service, Prefix,
@@ -71,6 +74,7 @@ handle_cast(_Msg, State) -> {noreply, State}.
 
 % get a service matching the requested prefix
 handle_call({get, Prefix}, _From, State) ->
+    io:format("Fetching Prefix: ~p from State ~p~n",[Prefix,State]),
     Reply = case lists:keyfind(Prefix,2,State) of
                 false -> not_found;
                 {Service, Prefix, Nodes} -> {Service, Prefix, Nodes}
