@@ -35,7 +35,7 @@ parse_params([{server, Server} | Tokens]) ->
 parse_params([[{nick, Nick},{_, _},{_,_ }] | ["PRIVMSG" | Rest]]) ->
     io:format("PRIVMSG for Nick: ~p raw: ~p~n",
               [Nick,Rest]),
-    {msg, Rest};
+    {msg, Nick, Rest};
 
 parse_params([[{nick, Nick},{_, _},{_,_ }] | Tokens]) ->
     io:format("parse_params with Nick: ~p raw: ~p~n",
@@ -66,12 +66,6 @@ process_bot_msg(Str) ->
     PrefixLessStr = string:strip(re:replace(Str,?BOTPREFIX,"",[{return, list}])),
     Tokenized = string:tokens(PrefixLessStr," "),
     [hd(Tokenized) | string:join(tl(Tokenized)," ")].
-
-%process_bot_msg(Str) ->
-    %io:format("Got a Bot Channel Str ~p~n",[Str]),
-    %%% remove bot prefix
-    %string:strip(re:replace(Str,?BOTPREFIX,"",[{return, list}])).
-%% also
 
 is_ctcp([Msg]) when is_list(Msg) ->
     io:format("check ctcp Msg ~p~n",[Msg]),

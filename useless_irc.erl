@@ -50,42 +50,49 @@ handle_call({join_channel, Channel}, _From, State) ->
 handle_call(stop, _From, State) ->
             {stop, normal, stopped, State}.
 
-handle_cast(_Msg, State) -> {noreply, State}.
-
 terminate(_Reason, _State) -> ok.
+
+handle_cast(_Msg, State) -> {noreply, State}.
 
 handle_info({tcp_closed, Reason}, State) ->
     io:format("Tcp closed with reason: ~p~n",[Reason]),
     {noreply, State};
 
+%% TODO use ref as a way to identify the response
 handle_info({tcp, _Socket, Msg}, State) ->
     case useless_irc_parser:parse_msg(Msg) of
         {response, Response} ->
             io:format("Respond server with ~p~n",[Response]),
             gen_tcp:send(State#state.sock, Response ++ ?CRLF);
-        {msg, [Nick | Privmsg]} when Nick =:= State#state.nick ->
-            io:format("Got a private msg ~p~n",[Privmsg]),
+        {msg, FromNick, [ToNick | Privmsg]} when ToNick =:= State#state.nick ->
+            io:format("Got a private msg from ~p ~p~n",[FromNick,Privmsg]),
             %% not pass state and create a new process to handle the request
             %% look at return value and if it's good then create a process
             %% for each registered function call it's handler
-            %NickRequest = useless_irc_parser:process_private_msg(Privmsg),
             [Service|Request] = useless_irc_parser:process_private_msg(Privmsg),
             io:format("Nick request msg ~p request ~p~n",[Service,Request]),
             %% find something that matches the prefix
-            ServiceAt = useless_irc_services:get_service(Service),
-            io:format("Service at ~p~n",[ServiceAt]);
-        {msg, [Chan | Chanmsg]} when Chan =:= State#state.channel ->
+            {_, _, {ServicePid, _, Mod}} = useless_irc_services:get_service(Service),
+            io:format("Service at ~p Module ~p Request ~p~n",[ServicePid,Mod,Request]),
+            apply(Mod,run,[Request,FromNick]);
+        {msg, FromNick, [Chan | Chanmsg]} when Chan =:= State#state.channel ->
             %% not pass state and create a new process to handle the request
             [Service|Request] = useless_irc_parser:process_channel_msg(Chanmsg),
-            io:format("Channel request msg ~p request ~p~n",[Service,Request]),
-            ServiceAt = useless_irc_services:get_service(Service),
-            io:format("Service at ~p~n",[ServiceAt]);
+            io:format("Channel request to Chan ~p From ~p msg ~p request ~p~n",
+                      [Chan,FromNick,Service,Request]),
+            %% for now, ignore the node, and just use the pid
+            %% make this a fun to handle no service case
+            {_, _, {ServicePid, _, Mod}} = useless_irc_services:get_service(Service),
+            io:format("Service at ~p Module ~p Request ~p~n",[ServicePid,Mod,Request]),
+            % should i change this and send a msg instead  ? XXX
+            ServicePid ! {run, Request, FromNick, self()};
+            %apply(Mod,run,[Request,FromNick]);
         _ -> io:format("Unexpected message rcvd: ~p~n",[Msg])
     end,
     {noreply, State};
 
 handle_info(Msg, State) ->
-    io:format("Unexpected message rcvd: ~p~n",[Msg]),
+    io:format("IRC Server Unexpected message rcvd: ~p~n",[Msg]),
     {noreply, State}.
 
 code_change(_OldVsn, State, _Extra) -> {ok, State}.

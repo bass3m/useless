@@ -7,11 +7,11 @@
 
 -define(SERVER, ?MODULE).
 
-register_service(Service, Prefix) ->
-    register_service(Service, Prefix, self(), node()).
+register_service(Service, Prefix, Mod) ->
+    register_service(Service, Prefix, self(), node(), Mod).
 
-register_service(Service, Prefix, Pid, Node) ->
-    gen_server:cast(?MODULE, {register, {Service, Prefix, Pid, Node}}).
+register_service(Service, Prefix, Pid, Node, Mod) ->
+    gen_server:cast(?MODULE, {register, {Service, Prefix, Pid, Node, Mod}}).
 
 remove_service(Service) ->
     gen_server:cast(?MODULE, {remove, Service}).
@@ -37,7 +37,7 @@ init([]) ->
 
 %% can have multiple nodes per service
 %% [{service1,prefix1,[nodex,nodey]},{service2,prefix2,[nodea,nodeb]}]
-handle_cast({register, {Service, Prefix, Pid, Node}}, State) when is_atom(Service) ->
+handle_cast({register, {Service, Prefix, Pid, Node, Mod}}, State) when is_atom(Service) ->
     %% returns false only if if it's a new {service,prefix} or {service,prefix}
     %% already exists (for the later case add another node to our list)
     case lists:keymember(Service,1,State) xor
@@ -49,12 +49,12 @@ handle_cast({register, {Service, Prefix, Pid, Node}}, State) when is_atom(Servic
             NewState =
                 case lists:keyfind(Service,1,State) of
                     false ->
-                        [{Service, Prefix, {Pid, Node}} | State];
+                        [{Service, Prefix, {Pid, Node, Mod}} | State];
                     {Service, Prefix, Nodes} ->
                         lists:keyreplace(Service, 1, State,
                                          {Service, Prefix,
-                                          lists:flatten([{Pid, Node} |
-                                                         lists:delete({Pid, Node}, [Nodes])])})
+                                          lists:flatten([{Pid, Node, Mod} |
+                                                         lists:delete({Pid, Node, Mod}, [Nodes])])})
                 end,
             io:format("Adding new Service to State ~p~n",[NewState]),
             {noreply, NewState}
