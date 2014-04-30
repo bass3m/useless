@@ -87,6 +87,13 @@ create_julia_session() ->
         {failed} -> {failed}
     end.
 
+%% "error": "hi not defined", when it's not defined
+check_julia_result(ResultJsonBody) ->
+    case proplists:lookup(<<"value">>,ResultJsonBody) of
+        {_, Result} -> {result, binary_to_list(Result)};
+        _ -> {failed, binary_to_list(proplists:get_value(<<"error">>))}
+    end.
+
 execute_julia_cmd(Id,Cmd) ->
     QueryStr = "sid=" ++ Id ++
                "&fetch=true&format=text&proc=" ++ http_uri:encode(Cmd),
@@ -200,7 +207,7 @@ handle_info({cmd_resp, User, Id, Result}, #state{pending=Pending} = State) ->
         {User, Chan, From, _Worker} ->
             io:format("New Cmd User ~p From ~p Session Id ~p State ~p~n",
                       [User,From,Id,State]),
-            From ! {cmd_resp, User, Chan, Id, Result}
+            From ! {cmd_resp, User, Chan, Result}
     end,
     {noreply, State};
 
