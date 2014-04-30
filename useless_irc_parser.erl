@@ -62,7 +62,7 @@ process_channel_msg(Msg) ->
 
 process_bot_msg(Str) ->
     io:format("Got a Bot Channel Str ~p~n",[Str]),
-    %% remove bot prefix
+    %% remove bot prefix, XXX should use pattern matching on strings instead of re
     PrefixLessStr = string:strip(re:replace(Str,?BOTPREFIX,"",[{return, list}])),
     Tokenized = string:tokens(PrefixLessStr," "),
     [hd(Tokenized) | string:join(tl(Tokenized)," ")].

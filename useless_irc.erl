@@ -74,7 +74,7 @@ handle_info({tcp, _Socket, Msg}, State) ->
             %% find something that matches the prefix
             {_, _, {ServicePid, _, Mod}} = useless_irc_services:get_service(Service),
             io:format("Service at ~p Module ~p Request ~p~n",[ServicePid,Mod,Request]),
-            apply(Mod,run,[Request,FromNick]);
+            ServicePid ! {run, Request, "", FromNick, self()};
         {msg, FromNick, [Chan | Chanmsg]} when Chan =:= State#state.channel ->
             %% not pass state and create a new process to handle the request
             [Service|Request] = useless_irc_parser:process_channel_msg(Chanmsg),
@@ -84,12 +84,29 @@ handle_info({tcp, _Socket, Msg}, State) ->
             %% make this a fun to handle no service case
             {_, _, {ServicePid, _, Mod}} = useless_irc_services:get_service(Service),
             io:format("Service at ~p Module ~p Request ~p~n",[ServicePid,Mod,Request]),
-            % should i change this and send a msg instead  ? XXX
-            ServicePid ! {run, Request, FromNick, self()};
-            %apply(Mod,run,[Request,FromNick]);
+            %% from nick might be channel here for the response XXX
+            ServicePid ! {run, Request, Chan, FromNick, self()};
         _ -> io:format("Unexpected message rcvd: ~p~n",[Msg])
     end,
     {noreply, State};
+
+handle_info({cmd_resp, User, Chan, Result}, State) when Chan =:= "" ->
+    io:format("IRC Server Cmd Result: ~p rcvd for User: ~p~n",[Result,User]),
+    %% use string:join here with spaces
+    gen_tcp:send(State#state.sock,
+                 "PRIVMSG " ++ User ++ ":" ++  Result ++ ?CRLF),
+    {noreply, State};
+
+handle_info({cmd_resp, User, Chan, Result}, State) ->
+    io:format("IRC Server Chan ~p Cmd Result: ~p rcvd for User: ~p~n",
+              [Chan,Result,User]),
+    gen_tcp:send(State#state.sock,
+                 string:join(["PRIVMSG",Chan,":" ++ Result ++ ?CRLF]," ")),
+                 %"PRIVMSG " ++ Chan ++ ":" ++ Result ++ ?CRLF),
+    %gen_tcp:send(State#state.sock,
+                 %"PRIVMSG " ++ Chan ++ ":" ++ Result ++ ?CRLF),
+    {noreply, State};
+
 
 handle_info(Msg, State) ->
     io:format("IRC Server Unexpected message rcvd: ~p~n",[Msg]),

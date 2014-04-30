@@ -15,7 +15,7 @@
 
 %% pending will have a list of tuple containing nick, calc etc..
 -record(state, {pending = []}).
--record(worker_state, {user, id, parent, time}).
+-record(worker_state, {user, chan, id, parent, time}).
 
 start() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
@@ -37,6 +37,7 @@ init([]) ->
 handle_call({num_pending}, _From, State) ->
     {reply, length(State#state.pending), State};
 
+%% XXX get rid of ?? Only useful if we use the local api functions
 handle_call({run, CommandToRun, User}, From, State) ->
     case lists:keyfind(User,1,State#state.pending) of
         %% check that user could be one of the active sessions
@@ -65,25 +66,71 @@ handle_call({run, CommandToRun, User}, From, State) ->
 handle_call(stop, _From, State) ->
             {stop, normal, stopped, State}.
 
+mandelbrot_api_request(Url,UrlEncoding,QueryStr) ->
+    case httpc:request(post,{Url,[],UrlEncoding,QueryStr},[],[]) of
+        {ok, {{_HttpVer, Code, _Msg}, _Headers, Body}}
+          when 200 =< Code andalso Code < 300 ->
+            {_, JsonBody} = mochijson2:decode(Body),
+            {ok, JsonBody};
+        FailedSession ->
+            io:format("Failed to get a session ~p~n",[FailedSession]),
+            {failed}
+    end.
+
+%% XXX make url configurable
+create_julia_session() ->
+    case mandelbrot_api_request("http://localhost:8080/sessions","","") of
+        {ok, JsonBody} ->
+            Id = binary_to_list(proplists:get_value(<<"sid">>,JsonBody)),
+            io:format("Got a session ~p~n",[Id]),
+            {created, Id};
+        {failed} -> {failed}
+    end.
+
+execute_julia_cmd(Id,Cmd) ->
+    QueryStr = "sid=" ++ Id ++
+               "&fetch=true&format=text&proc=" ++ http_uri:encode(Cmd),
+    case mandelbrot_api_request("http://localhost:8080/references",
+                                "application/x-www-form-urlencoded",QueryStr) of
+        {ok, JsonBody} ->
+            %% extract the result in val
+            Result = binary_to_list(proplists:get_value(<<"value">>,JsonBody)),
+            io:format("Got the result ~p~n",[Result]),
+            {result, Result};
+        {failed} -> {failed}
+    end.
+
+
 %% response will go back to handle_info ? XXX
+%% ParentPid is the gen_server which spawned this worker process
 run_julia_run(State = #worker_state{user=User,parent=ParentPid}) ->
     receive
         {new_cmd, Cmd} ->
-            %% will create an http connection and
             io:format("Worker Got a new cmd ~p to run for user ~p~n",[Cmd,User]),
-            %% we have to create a session etc.. and store in id the session id etc..
-            Id = random:uniform(1000), %% for now
-            ParentPid ! {new_cmd_resp, User, Id},
-            run_julia_run(State#worker_state{id = Id});
+            case create_julia_session() of
+                {created, Id} ->
+                    % do the fetch
+                    case execute_julia_cmd(Id,Cmd) of
+                        {result, Result} ->
+                            ParentPid ! {new_cmd_resp, User, Id, Result},
+                            run_julia_run(State#worker_state{id = Id});
+                        {failed} ->
+                            ParentPid ! {cmd_run_failed, User}
+                    end;
+                {failed} ->
+                    ParentPid ! {session_create_failed, User}
+            end;
         {cmd, Cmd} ->
-            %% can use the Id for subsequent requests
-            %% State#worker_state.id
-            io:format("Worker Got cmd ~p to run for user ~p~n",[Cmd,User]),
-            ParentPid ! {cmd_resp, User, Cmd ++ " : " ++ Cmd},
-            run_julia_run(State)
-    after 20000 -> %% make this a minute or 2
-        %% really for the response
-        %% remove julia session
+            Id = State#worker_state.id,
+            case execute_julia_cmd(Id,Cmd) of
+                {result, Result} ->
+                    ParentPid ! {cmd_resp, User, Id, Result},
+                    run_julia_run(State);
+                {failed} ->
+                    ParentPid ! {cmd_run_failed, User, Id}
+            end
+    after 240000 -> %% make this a minute or 2
+        %% TODO remove julia session
         ParentPid ! {timeout, User}
     end.
 
@@ -97,23 +144,24 @@ handle_info({timeout, User}, State) ->
     io:format("Timeout for User ~p State ~p~n",[User,State]),
     {noreply, State};
 
-handle_info({run, CommandToRun, User, FromPid}, State) ->
+handle_info({run, CommandToRun, Chan, User, FromPid}, State) ->
     case lists:keyfind(User,1,State#state.pending) of
         %% check that user could be one of the active sessions
-        {_, _, Worker} ->
+        {_, _, _, Worker} ->
             %% try not accept another command if have one outstanding for that
             %% same user
-            Worker ! {cmd, CommandToRun};
+            Worker ! {cmd, CommandToRun},
+            {noreply, State};
         false ->
             case length(State#state.pending) >= ?MAX_SESSIONS of
                 true ->
                     {reply, busy, State};
                 false ->
                     Worker = spawn_link(?MODULE, run_julia_run,
-                                        [#worker_state{user = User, id = "",
-                                                       parent = self()}]),
+                                        [#worker_state{user = User, chan = Chan,
+                                                       id = "", parent = self()}]),
                     Worker ! {new_cmd, CommandToRun},
-                    NewState = #state{pending = [{User, FromPid, Worker} | State#state.pending]},
+                    NewState = #state{pending = [{User, Chan, FromPid, Worker} | State#state.pending]},
                     %% here we send the message to julia
                     % simulate with a timeout, i.e. after 3 secs respond
                     io:format("Worker newstate ~p From ~p user ~p~n",
@@ -122,7 +170,8 @@ handle_info({run, CommandToRun, User, FromPid}, State) ->
             end
     end;
 
-handle_info({new_cmd_resp, User, Id}, #state{pending=Pending} = State) ->
+%% perhaps use Id and add to pending for user
+handle_info({new_cmd_resp, User, Id, Result}, #state{pending=Pending} = State) ->
     % when get response, now we have to send that response back to
     % useless_irc
     io:format("New Cmd User ~p Session Id ~p State ~p~n",[User,Id,State]),
@@ -132,21 +181,57 @@ handle_info({new_cmd_resp, User, Id}, #state{pending=Pending} = State) ->
             io:format("Not found New Cmd Resp ~p Session Id ~p State ~p~n",
                       [User,Id,State]),
             not_found;
-        {User, From, _Worker} ->
+        {User, Chan, From, _Worker} ->
             io:format("New Cmd User ~p From ~p Session Id ~p State ~p~n",
                       [User,From,Id,State]),
-            From ! {new_cmd_resp, User, Id}
-            %element(1,From) ! {new_cmd_resp, User, Id}
-            % XXX this is wrong, need to send to the right place
-            %gen_server:reply(From, {new_cmd_resp, User, Id})
+            %% server doesn't care about new vs. not, just make a generic send
+            From ! {cmd_resp, User, Chan, Result}
     end,
     {noreply, State};
 
-handle_info({cmd_resp, User, CmdResp}, State) ->
+handle_info({cmd_resp, User, Id, Result}, #state{pending=Pending} = State) ->
+    % when get response, now we have to send that response back to
+    io:format("Cmd response User ~p Result ~p State ~p~n",[User,Result,State]),
+    case lists:keyfind(User,1,Pending) of
+        false ->
+            io:format("Not found New Cmd Resp ~p Result ~p State ~p~n",
+                      [User,Result,State]),
+            not_found;
+        {User, Chan, From, _Worker} ->
+            io:format("New Cmd User ~p From ~p Session Id ~p State ~p~n",
+                      [User,From,Id,State]),
+            From ! {cmd_resp, User, Chan, Id, Result}
+    end,
+    {noreply, State};
+
+handle_info({session_create_failed, User}, #state{pending=Pending} = State) ->
     % when get response, now we have to send that response back to
     % useless_irc
-    io:format("Cmd response User ~p CmdRsp ~p State ~p~n",[User,CmdResp,State]),
-    %gen_server:reply(),
+    io:format("Session Create failed User ~p State ~p~n",[User,State]),
+    case lists:keyfind(User,1,Pending) of
+        false ->
+            io:format("Not found User ~p State ~p~n",
+                      [User,State]),
+            not_found;
+        {User, From, _Worker} ->
+            io:format("Session Creation failed ~p From ~p State ~p~n",
+                      [User,From,State]),
+            From ! {session_create_failed, User}
+    end,
+    {noreply, State};
+
+handle_info({cmd_run_failed, User, Id}, #state{pending=Pending} = State) ->
+    io:format("Cmd failed to run. Id ~p User ~p State ~p~n",[Id,User,State]),
+    case lists:keyfind(User,1,Pending) of
+        false ->
+            io:format("Not found User ~p State ~p~n",
+                      [User,State]),
+            not_found;
+        {User, From, _Worker} ->
+            io:format("Cmd run failed User ~p From ~p State ~p~n",
+                      [User,From,State]),
+            From ! {cmd_run_failed, User}
+    end,
     {noreply, State};
 
 handle_info(Msg, State) ->
