@@ -102,11 +102,7 @@ handle_info({cmd_resp, User, Chan, Result}, State) ->
               [Chan,Result,User]),
     gen_tcp:send(State#state.sock,
                  string:join(["PRIVMSG",Chan,":" ++ Result ++ ?CRLF]," ")),
-                 %"PRIVMSG " ++ Chan ++ ":" ++ Result ++ ?CRLF),
-    %gen_tcp:send(State#state.sock,
-                 %"PRIVMSG " ++ Chan ++ ":" ++ Result ++ ?CRLF),
     {noreply, State};
-
 
 handle_info(Msg, State) ->
     io:format("IRC Server Unexpected message rcvd: ~p~n",[Msg]),

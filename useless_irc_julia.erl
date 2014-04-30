@@ -87,11 +87,11 @@ create_julia_session() ->
         {failed} -> {failed}
     end.
 
-%% "error": "hi not defined", when it's not defined
 check_julia_result(ResultJsonBody) ->
     case proplists:lookup(<<"value">>,ResultJsonBody) of
         {_, Result} -> {result, binary_to_list(Result)};
-        _ -> {failed, binary_to_list(proplists:get_value(<<"error">>))}
+        _ -> {failed, binary_to_list(proplists:get_value(<<"error">>,
+                                                         ResultJsonBody))}
     end.
 
 execute_julia_cmd(Id,Cmd) ->
@@ -101,7 +101,7 @@ execute_julia_cmd(Id,Cmd) ->
                                 "application/x-www-form-urlencoded",QueryStr) of
         {ok, JsonBody} ->
             %% extract the result in val
-            Result = binary_to_list(proplists:get_value(<<"value">>,JsonBody)),
+            {_, Result} = check_julia_result(JsonBody),
             io:format("Got the result ~p~n",[Result]),
             {result, Result};
         {failed} -> {failed}
@@ -122,7 +122,7 @@ run_julia_run(State = #worker_state{user=User,parent=ParentPid}) ->
                             ParentPid ! {new_cmd_resp, User, Id, Result},
                             run_julia_run(State#worker_state{id = Id});
                         {failed} ->
-                            ParentPid ! {cmd_run_failed, User}
+                            ParentPid ! {cmd_run_failed, User, Id}
                     end;
                 {failed} ->
                     ParentPid ! {session_create_failed, User}
@@ -237,6 +237,7 @@ handle_info({cmd_run_failed, User, Id}, #state{pending=Pending} = State) ->
         {User, From, _Worker} ->
             io:format("Cmd run failed User ~p From ~p State ~p~n",
                       [User,From,State]),
+            %% should we remove user TODO
             From ! {cmd_run_failed, User}
     end,
     {noreply, State};
