@@ -19,15 +19,12 @@ handle_prefix(Tokens) ->
     Tokens.
 
 parse_msg(Msg) ->
-    %io:format("parse_msg:raw: ~p~n",[Msg]),
     MsgStr = binary_to_list(Msg),
     StripedMsg = string:substr(MsgStr,1,string:len(MsgStr) - 2),
     Tokens = string:tokens(StripedMsg," "),
-    %io:format("Tokens ~p~n",[Tokens]),
     Prefix = handle_prefix(Tokens),
     parse_params(Prefix).
 
-%parse_params([{server, Server}, ErrReply, Nick | Tokens]) when ErrReply =:= "462" ->
 parse_params([{server, Server}, "462", Nick | _Tokens]) ->
     io:format("Nick ~p is already registered on server ~p~n",
               [Nick,Server]),
@@ -35,18 +32,12 @@ parse_params([{server, Server}, "462", Nick | _Tokens]) ->
     ok;
 
 parse_params([{server, _Server} | _Tokens]) ->
-    %io:format("parse_params server: ~p raw: ~p~n",
-              %[Server,Tokens]),
     ignored;
 
 parse_params([[{nick, Nick},{_, _},{_,_ }] | ["PRIVMSG" | Rest]]) ->
-    %io:format("PRIVMSG for Nick: ~p raw: ~p~n",
-              %[Nick,Rest]),
     {msg, Nick, Rest};
 
 parse_params([[{nick, _Nick},{_, _},{_,_ }] | _Tokens]) ->
-    %io:format("parse_params with Nick: ~p raw: ~p~n",
-              %[Nick,Tokens]),
     ignored;
 
 parse_params(Command) ->
@@ -57,7 +48,6 @@ process_cmd(["PING" | Server]) ->
     {response, "PONG " ++ string:substr(hd(Server),2)};
 
 process_cmd(_Command) ->
-    %io:format("Got Command ~p~n",[Command]),
     ignored.
 
 process_channel_msg(Msg) ->
@@ -68,14 +58,12 @@ process_channel_msg(Msg) ->
     end.
 
 process_bot_msg(Str) ->
-    %io:format("Got a Bot Channel Str ~p~n",[Str]),
     %% remove bot prefix, XXX should use pattern matching on strings instead of re
     PrefixLessStr = string:strip(re:replace(Str,?BOTPREFIX,"",[{return, list}])),
     Tokenized = string:tokens(PrefixLessStr," "),
     [hd(Tokenized) | string:join(tl(Tokenized)," ")].
 
 is_ctcp([Msg]) when is_list(Msg) ->
-    %io:format("check ctcp Msg ~p~n",[Msg]),
     [hd(Msg)] =:= ":" andalso hd(tl(Msg)) =:= 1 andalso lists:last(Msg) =:= 1;
 
 is_ctcp(_) ->

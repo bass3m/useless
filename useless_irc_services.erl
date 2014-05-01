@@ -57,7 +57,7 @@ handle_cast({register, {Service, Prefix, Pid, Node, Mod}}, State) when is_atom(S
                                           lists:flatten([{Pid, Node, Mod} |
                                                          lists:delete({Pid, Node, Mod}, [Nodes])])})
                 end,
-            io:format("Adding new Service to State ~p~n",[NewState]),
+            io:format("Adding new Service ~p with prefix ~p~n",[Service,Prefix]),
             {noreply, NewState}
     end;
 
