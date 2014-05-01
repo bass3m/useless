@@ -62,44 +62,43 @@ handle_info({tcp_closed, Reason}, State) ->
 handle_info({tcp, _Socket, Msg}, State) ->
     case useless_irc_parser:parse_msg(Msg) of
         {response, Response} ->
-            io:format("Respond server with ~p~n",[Response]),
+            io:format("Respond to server with ~p~n",[Response]),
             gen_tcp:send(State#state.sock, Response ++ ?CRLF);
         {msg, FromNick, [ToNick | Privmsg]} when ToNick =:= State#state.nick ->
-            io:format("Got a private msg from ~p ~p~n",[FromNick,Privmsg]),
             %% not pass state and create a new process to handle the request
             %% look at return value and if it's good then create a process
             %% for each registered function call it's handler
             [Service|Request] = useless_irc_parser:process_private_msg(Privmsg),
-            io:format("Nick request msg ~p request ~p~n",[Service,Request]),
+            %io:format("Nick request msg ~p request ~p~n",[Service,Request]),
             %% find something that matches the prefix
-            {_, _, {ServicePid, _, Mod}} = useless_irc_services:get_service(Service),
-            io:format("Service at ~p Module ~p Request ~p~n",[ServicePid,Mod,Request]),
+            {_, _, {ServicePid, _, _Mod}} = useless_irc_services:get_service(Service),
+            %io:format("Service at ~p Module ~p Request ~p~n",[ServicePid,Mod,Request]),
             ServicePid ! {run, Request, "", FromNick, self()};
         {msg, FromNick, [Chan | Chanmsg]} when Chan =:= State#state.channel ->
             %% not pass state and create a new process to handle the request
             [Service|Request] = useless_irc_parser:process_channel_msg(Chanmsg),
-            io:format("Channel request to Chan ~p From ~p msg ~p request ~p~n",
-                      [Chan,FromNick,Service,Request]),
+            %io:format("Channel request to Chan ~p From ~p msg ~p request ~p~n",
+                      %[Chan,FromNick,Service,Request]),
             %% for now, ignore the node, and just use the pid
             %% make this a fun to handle no service case
-            {_, _, {ServicePid, _, Mod}} = useless_irc_services:get_service(Service),
-            io:format("Service at ~p Module ~p Request ~p~n",[ServicePid,Mod,Request]),
+            {_, _, {ServicePid, _, _Mod}} = useless_irc_services:get_service(Service),
+            %io:format("Service at ~p Module ~p Request ~p~n",[ServicePid,Mod,Request]),
             %% from nick might be channel here for the response XXX
             ServicePid ! {run, Request, Chan, FromNick, self()};
-        _ -> io:format("Unexpected message rcvd: ~p~n",[Msg])
+        _ -> ignored
     end,
     {noreply, State};
 
 handle_info({cmd_resp, User, Chan, Result}, State) when Chan =:= "" ->
-    io:format("IRC Server Cmd Result: ~p rcvd for User: ~p~n",[Result,User]),
+    %io:format("IRC Server Cmd Result: ~p rcvd for User: ~p~n",[Result,User]),
     %% use string:join here with spaces
     gen_tcp:send(State#state.sock,
-                 "PRIVMSG " ++ User ++ ":" ++  Result ++ ?CRLF),
+                 string:join(["PRIVMSG",User,":" ++ Result ++ ?CRLF]," ")),
     {noreply, State};
 
-handle_info({cmd_resp, User, Chan, Result}, State) ->
-    io:format("IRC Server Chan ~p Cmd Result: ~p rcvd for User: ~p~n",
-              [Chan,Result,User]),
+handle_info({cmd_resp, _User, Chan, Result}, State) ->
+    %io:format("IRC Server Chan ~p Cmd Result: ~p rcvd for User: ~p~n",
+              %[Chan,Result,User]),
     gen_tcp:send(State#state.sock,
                  string:join(["PRIVMSG",Chan,":" ++ Result ++ ?CRLF]," ")),
     {noreply, State};

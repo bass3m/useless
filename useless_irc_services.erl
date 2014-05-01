@@ -36,6 +36,7 @@ init([]) ->
     {ok, []}.
 
 %% can have multiple nodes per service
+%% TODO monitor that process and remove if/when died
 %% [{service1,prefix1,[nodex,nodey]},{service2,prefix2,[nodea,nodeb]}]
 handle_cast({register, {Service, Prefix, Pid, Node, Mod}}, State) when is_atom(Service) ->
     %% returns false only if if it's a new {service,prefix} or {service,prefix}
@@ -60,6 +61,7 @@ handle_cast({register, {Service, Prefix, Pid, Node, Mod}}, State) when is_atom(S
             {noreply, NewState}
     end;
 
+%% TODO remove from monitor
 handle_cast({remove, Service}, State) when is_atom(Service) ->
     case lists:keymember(Service,1,State) of
          true ->
@@ -74,7 +76,7 @@ handle_cast(_Msg, State) -> {noreply, State}.
 
 % get a service matching the requested prefix
 handle_call({get, Prefix}, _From, State) ->
-    io:format("Fetching Prefix: ~p from State ~p~n",[Prefix,State]),
+    %io:format("Fetching Prefix: ~p from State ~p~n",[Prefix,State]),
     Reply = case lists:keyfind(Prefix,2,State) of
                 false -> not_found;
                 {Service, Prefix, Nodes} -> {Service, Prefix, Nodes}
